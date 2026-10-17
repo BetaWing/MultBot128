@@ -4,7 +4,7 @@
   "private": true,
   "description": "Validações estáticas do userscript MultBot",
   "scripts": {
-    "test": "node scripts/validate.js && node scripts/behavior-test.js",
+    "test": "node scripts/validate.js && node scripts/behavior-test.js && node scripts/regression-test.js",
     "validate": "node scripts/validate.js"
   }
 }

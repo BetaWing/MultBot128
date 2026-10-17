@@ -46,11 +46,13 @@ O `index.js` aguarda o jogo ficar pronto, baixa os módulos e monta o bundle no 
 ## Melhorias de confiabilidade
 
 - Módulos isolados durante a inicialização: uma falha opcional não derruba todo o bot.
-- Requisições AJAX com timeout e intervals protegidos contra sobreposição.
+- Requisições AJAX GET/POST usam o mesmo tratamento de timeout e limpeza de timers.
+- Auto Attack e Auto Recursos compartilham uma trava por instância entre execução inicial e intervalos. Parar invalida o ciclo em andamento, inclusive após parar/iniciar rapidamente.
 - `town_id` explícito nos envios de tropas, sem alterar globalmente a cidade ativa do jogo.
 - Auto Dodge considera o primeiro e o último ataque da onda e persiste retornos pendentes.
 - Auto Milícia reage via Backbone e mantém polling como fallback.
-- Envios de recursos são sequenciais para reduzir risco de sobrecarregar o mesmo armazém.
+- Auto Recursos consulta o comércio em trânsito e reserva espaço por recurso a cada envio do ciclo. Falha na consulta impede envios; timeout ou ausência de confirmação de um envio desativa o módulo até conferência manual.
+- Sniper só repete após confirmar o cancelamento, a saída do comando original do modelo do jogo e a disponibilidade das tropas. Resultados incertos não são reenviados automaticamente.
 - Alertas do Discord evitam notificações simultâneas duplicadas e ocultam o webhook na interface.
 - Detecção de desafios anti-bot pausa os módulos que possuem guard de segurança.
 - Console limitado a 200 entradas, com renderização segura de texto.
@@ -58,7 +60,7 @@ O `index.js` aguarda o jogo ficar pronto, baixa os módulos e monta o bundle no 
 
 ## Desenvolvimento e validação
 
-Não há dependências externas. Com Node.js instalado:
+Não há dependências externas. Com Node.js 22 ou superior instalado:
 
 ```bash
 npm test
@@ -71,7 +73,19 @@ A validação verifica:
 - arquivos de módulo órfãos;
 - paridade e cobertura das traduções em inglês e português;
 - ausência da antiga troca global de `Game.townId` nos módulos de envio;
-- comportamento da onda/recall defensivo, reagendamento/retry da milícia, restauração do Auto Ocultar e payloads de envio.
+- comportamento da onda/recall defensivo, reagendamento/retry da milícia, restauração do Auto Ocultar e payloads de envio;
+- comportamento real de `MultUtil`: trava, intervalos, Sleeper e AJAX (com navegador/API simulados);
+- parada/reinício durante operações assíncronas, reservas de recursos e cancelamento/persistência do Sniper.
+
+A rotina `.github/workflows/validate.yml` executa esses testes em pushes e pull requests, com Node.js 22 e 24. Os testes locais não substituem validação no cliente real do jogo.
+
+### Limites e resultados incertos
+
+- **Parar** impede as próximas ações do ciclo; não desfaz requisições já recebidas pelo servidor.
+- O Auto Recursos usa `town_overviews/trade_overview`, no formato já utilizado pelo AutoTrade. Se essa visão estiver indisponível ou tiver dados inválidos/ambíguos, o ciclo é interrompido. As reservas são locais ao ciclo, não uma trava global entre abas, outros módulos ou ações manuais.
+- Se um envio de recursos ficar sem confirmação, confira os movimentos antes de reativar o módulo.
+- O Sniper salva o estado antes do envio. Uma recarga durante o disparo ou um cancelamento sem confirmação fica marcado como **Conferir comando**. Confira no jogo antes de remover o aviso; remover o registro local não cancela tropas.
+- A reconciliação do Sniper é conservadora: se o modelo de movimentos estiver indisponível ou desatualizado, ele pode desistir do reenvio em vez de arriscar duplicação.
 
 ## Estrutura
 
@@ -81,6 +95,7 @@ MultBot/
 ├── package.json             # comandos de validação, sem dependências
 ├── scripts/
 │   ├── behavior-test.js
+│   ├── regression-test.js
 │   └── validate.js
 └── Modules/
     ├── core.js              # i18n, storage, console e utilitários

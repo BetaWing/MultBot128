@@ -27,9 +27,10 @@
 var AutoSendResources = class extends MultUtil {
     constructor(c, s) {
         super(c, s);
+        this._generation = 0;
+        this._restoreTimeout = null;
         this._active        = false;
         this._intervalId    = null;
-        this._urgentQueue   = []; // cidades em 90%+ aguardando envio urgente
 
         this.mode                 = this.storage.load('asr_mode', 'balance');
         this.manualTargetId       = this.storage.load('asr_manual_target', null);
@@ -38,7 +39,7 @@ var AutoSendResources = class extends MultUtil {
         this.sendThreshold        = this.storage.load('asr_send_pct', 60);     // excedente acima de X%
 
         if (this.storage.load('asr_active', false)) {
-            setTimeout(() => this.start(), 2500);
+            this._restoreTimeout = setTimeout(() => this.start(), 2500);
         }
     }
 
@@ -126,8 +127,11 @@ var AutoSendResources = class extends MultUtil {
     };
 
     start() {
+        clearTimeout(this._restoreTimeout);
+        this._restoreTimeout = null;
         if (this._active) return;
         this._active = true;
+        this._generation++;
         this.storage.save('asr_active', true);
         this._updateTitle();
         this.console.log('[AutoRecursos] Iniciado. Modo: ' + this.mode + ' | Intervalo: ' + this.checkIntervalMinutes + ' min | Alarme: ' + this.overflowThreshold + '%');
@@ -136,6 +140,9 @@ var AutoSendResources = class extends MultUtil {
     }
 
     stop() {
+        clearTimeout(this._restoreTimeout);
+        this._restoreTimeout = null;
+        this._generation++;
         this._active = false;
         this.storage.save('asr_active', false);
         if (this._intervalId) { clearInterval(this._intervalId); this._intervalId = null; }
@@ -247,18 +254,31 @@ var AutoSendResources = class extends MultUtil {
     // ─────────────────────────────────────────────────────────────
     //  TICK PRINCIPAL
     // ─────────────────────────────────────────────────────────────
+    _canRun(generation) {
+        return this._active && generation === this._generation
+            && !uw.__multbot_captcha_active && !this.isSleeping();
+    }
+
     async _tick() {
-        if (uw.__multbot_captcha_active || this.isSleeping()) return;
-        const townIds = Object.keys(uw.ITowns.towns);
-        if (townIds.length < 2) return;
-
-        this.console.log('[AutoRecursos] ── Tick (' + this.mode + ') ──');
-
-        if (this.mode === 'manual') {
-            await this._tickManual(townIds);
-        } else {
-            await this._tickBalance(townIds);
-        }
+        const generation = this._generation;
+        if (!this._canRun(generation)) return;
+        return this.runExclusive('tick', async () => {
+            try {
+                const townIds = Object.keys(uw.ITowns.towns);
+                if (townIds.length < 2) return;
+                // Snapshot em trânsito + reservas locais dos envios deste ciclo.
+                const incoming = await this._loadIncomingResources();
+                if (!this._canRun(generation)) return;
+                const cycle = { generation, incoming };
+                if (this.mode === 'manual') {
+                    await this._tickManual(townIds, cycle);
+                } else {
+                    await this._tickBalance(townIds, cycle);
+                }
+            } catch (error) {
+                this.console.log('[' + this.constructor.name + '] Ciclo interrompido: ' + (error?.message ?? error));
+            }
+        });
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -270,7 +290,7 @@ var AutoSendResources = class extends MultUtil {
     //  3. Cidades muito acima da media (> sendThreshold%) enviam
     //     o excedente para cidades abaixo da media.
     // ─────────────────────────────────────────────────────────────
-    async _tickBalance(townIds) {
+    async _tickBalance(townIds, cycle) {
         const lines = [];
         const urgentHandled = new Set();
 
@@ -281,17 +301,19 @@ var AutoSendResources = class extends MultUtil {
             this.console.log('[AutoRecursos] [URGENTE] ' + urgentSenders.length + ' cidade(s) em ' + this.overflowThreshold + '%+');
 
             // Destino: menos desenvolvida com espaco
-            const devTargets = this._findLeastDevelopedTowns(townIds);
+            const devTargets = this._findLeastDevelopedTowns(townIds, cycle);
             for (const fromId of urgentSenders) {
+                if (!this._canRun(cycle.generation)) return;
                 // Encontra o melhor destino (que nao seja o proprio remetente)
-                const toId = devTargets.find(id => id !== fromId);
+                const toId = devTargets.find(id => id !== fromId && this._hasRoomForAny(id, cycle));
                 if (!toId) continue;
 
                 const fromName = this.getTownName(fromId);
                 const toName   = this.getTownName(toId);
                 this.console.log('[AutoRecursos] [URGENTE] ' + fromName + ' → ' + toName);
 
-                const ok = await this._sendResources(fromId, toId, true);
+                const ok = await this._sendResources(fromId, toId, true, cycle);
+                if (!this._canRun(cycle.generation)) return;
                 if (ok) urgentHandled.add(String(fromId));
                 lines.push((ok ? '  ✓ ' : '  ✗ ') + fromName + ' → ' + toName);
             }
@@ -350,7 +372,7 @@ var AutoSendResources = class extends MultUtil {
                     // Destinatario: tem espaco e esta abaixo da media em pelo menos 1 recurso
                     // FIX v2.1: usa _hasRoomForAny() para garantir espaco real por recurso
                     const needsRes = res.wood < avgW || res.stone < avgS || res.iron < avgI;
-                    if (needsRes && !this._isAlmostFull(id) && this._hasRoomForAny(id)) {
+                    if (needsRes && !this._isAlmostFull(id) && this._hasRoomForAny(id, cycle)) {
                         receivers.push({ id, score: this._getDevelopmentScore(town) });
                     }
                 }
@@ -383,9 +405,13 @@ var AutoSendResources = class extends MultUtil {
            armazém e a soma podia ultrapassar a capacidade disponível. */
         let sentCount = 0;
         for (let i = 0; i < senders.length; i++) {
+            if (!this._canRun(cycle.generation)) return;
             const fromId = senders[i];
-            const toId = receivers[i % receivers.length].id;
-            const ok = await this._sendResources(fromId, toId, false);
+            const candidates = receivers.slice(i % receivers.length).concat(receivers.slice(0, i % receivers.length));
+            const toId = candidates.find(candidate => this._hasRoomForAny(candidate.id, cycle))?.id;
+            if (!toId) break;
+            const ok = await this._sendResources(fromId, toId, false, cycle);
+            if (!this._canRun(cycle.generation)) return;
             if (ok) sentCount++;
             const fName = this.getTownName(fromId);
             const tName = this.getTownName(toId);
@@ -393,6 +419,7 @@ var AutoSendResources = class extends MultUtil {
             await this.sleep(300);
         }
 
+        if (!this._canRun(cycle.generation)) return;
         const summary = sentCount > 0
             ? '✓ ' + sentCount + ' envio(s) realizados com sucesso.'
             : 'Nenhum envio concluído (sem excedente real ou destinos cheios).';
@@ -405,7 +432,7 @@ var AutoSendResources = class extends MultUtil {
     //  MODO MANUAL
     //  Destino fixo. Gatilho: cidade atinge overflowThreshold%.
     // ─────────────────────────────────────────────────────────────
-    async _tickManual(townIds) {
+    async _tickManual(townIds, cycle) {
         if (!this.manualTargetId) {
             this._setLog('⚠ Configure uma cidade destino no modo manual.');
             return;
@@ -425,7 +452,7 @@ var AutoSendResources = class extends MultUtil {
             return;
         }
 
-        const senders = townIds.filter(id => id !== this.manualTargetId && this._isOverflowing(id));
+        const senders = townIds.filter(id => String(id) !== String(this.manualTargetId) && this._isOverflowing(id));
         if (!senders.length) {
             const msg = 'Nenhuma cidade em ' + this.overflowThreshold + '%+ de armazém.';
             this.console.log('[AutoRecursos] [Manual] ' + msg);
@@ -436,18 +463,92 @@ var AutoSendResources = class extends MultUtil {
         const targetName = targetTown.getName();
         this.console.log('[AutoRecursos] [Manual] ' + senders.length + ' cidade(s) enviando para ' + targetName);
 
-        // Todos enviam para o mesmo destino: processa em série para que
-        // cada cálculo enxergue a capacidade consumida pelo envio anterior.
+        // Envios em série compartilham as reservas do mesmo ciclo.
         let totalSent = 0;
         for (const fromId of senders) {
-            if (await this._sendResources(fromId, this.manualTargetId, true)) totalSent++;
+            if (!this._canRun(cycle.generation)) return;
+            if (await this._sendResources(fromId, this.manualTargetId, true, cycle)) totalSent++;
+            if (!this._canRun(cycle.generation)) return;
             await this.sleep(300);
         }
+        if (!this._canRun(cycle.generation)) return;
         const msg = totalSent > 0
             ? '✓ ' + totalSent + ' cidade(s) enviaram para ' + targetName
             : 'Nenhum envio concluído (' + targetName + ' sem espaço?).';
         this.console.log('[AutoRecursos] [Manual] ' + msg);
         this._setLog(msg);
+    }
+
+    /* Usa o mesmo endpoint/formato já empregado pelo AutoTrade. Se a
+       visão de comércio falhar, não assume trânsito zero: aborta o ciclo. */
+    async _loadIncomingResources() {
+        const response = await this.ajaxGetWithTimeout('town_overviews', 'trade_overview', {}, 10000, true);
+        if (response?.error || !Array.isArray(response?.movements)) {
+            throw new Error('Não foi possível consultar os recursos em trânsito.');
+        }
+        const incoming = new Map();
+        for (const trade of response.movements) {
+            const targetId = this._getTradeTargetId(trade);
+            if (targetId === null || !uw.ITowns.towns[targetId]) continue;
+            const amounts = incoming.get(targetId) || { wood: 0, stone: 0, iron: 0 };
+            for (const resource of ['wood', 'stone', 'iron']) {
+                const amount = Number(trade.res?.[resource]);
+                if (!Number.isFinite(amount) || amount < 0) {
+                    throw new Error('Quantidade inválida na visão de comércio.');
+                }
+                amounts[resource] += amount;
+            }
+            incoming.set(targetId, amounts);
+        }
+        return incoming;
+    }
+
+    _getTradeTargetId(trade) {
+        const directId = trade?.target_town_id ?? trade?.to?.id;
+        if (directId != null) {
+            if (!/^\d+$/.test(String(directId))) throw new Error('Destino de comércio inválido.');
+            return String(directId);
+        }
+
+        // Links nativos podem transportar o ID em data-* ou no hash JSON.
+        const holder = document.createElement('div');
+        holder.innerHTML = trade?.to?.link || '';
+        const link = holder.querySelector('a');
+        const dataId = link?.getAttribute('data-townid') || link?.getAttribute('data-town-id');
+        if (dataId && /^\d+$/.test(dataId)) return dataId;
+        const hash = link?.getAttribute('href')?.split('#')[1];
+        if (hash) {
+            try {
+                const town = JSON.parse(atob(decodeURIComponent(hash)));
+                if (town.id != null && /^\d+$/.test(String(town.id))) return String(town.id);
+            } catch (_) { /* Fallback para links antigos, resolvidos pelo nome. */ }
+        }
+
+        const name = holder.textContent.trim();
+        if (!name) throw new Error('Destino ausente na visão de comércio.');
+        const matches = Object.values(uw.ITowns.towns).filter(town =>
+            (town.getName ? town.getName() : town.name) === name
+        );
+        if (matches.length > 1) throw new Error('Destino de comércio ambíguo: ' + name);
+        return matches.length === 1 ? String(matches[0].id) : null;
+    }
+
+    /* Distribuição equilibrada com reaproveitamento da capacidade que um
+       recurso não consegue usar. Quantidades sempre inteiras e limitadas. */
+    _allocateResources(limits, capacity) {
+        const result = { wood: 0, stone: 0, iron: 0 };
+        let remaining = Math.max(0, Math.floor(capacity));
+        let available = Object.keys(result).filter(key => limits[key] > 0);
+        while (remaining > 0 && available.length > 0) {
+            const share = Math.max(1, Math.floor(remaining / available.length));
+            for (const key of available) {
+                const amount = Math.min(share, limits[key] - result[key], remaining);
+                result[key] += amount;
+                remaining -= amount;
+            }
+            available = available.filter(key => result[key] < limits[key]);
+        }
+        return result;
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -479,17 +580,19 @@ var AutoSendResources = class extends MultUtil {
         }
     }
 
-    // FIX v2.1: Verifica se destino tem espaco minimo util em pelo menos 1 recurso
-    // Garante que nao aceitamos destinos com espaco apenas residual
-    _hasRoomForAny(townId) {
+    _getResourceRoom(townId, incoming) {
+        const res = uw.ITowns.towns[townId].resources();
+        const reserved = incoming.get(String(townId)) || {};
+        return Object.fromEntries(['wood', 'stone', 'iron'].map(resource => [
+            resource,
+            Math.max(0, Math.floor(res.storage * 0.90 - res[resource] - (reserved[resource] || 0))),
+        ]));
+    }
+
+    _hasRoomForAny(townId, cycle) {
         try {
-            const res     = uw.ITowns.towns[townId].resources();
-            const minRoom = 500; // espaco minimo util por recurso
-            return (
-                (res.storage - res.wood)  >= minRoom ||
-                (res.storage - res.stone) >= minRoom ||
-                (res.storage - res.iron)  >= minRoom
-            );
+            const room = this._getResourceRoom(townId, cycle.incoming);
+            return Object.values(room).some(amount => amount >= 500);
         } catch (e) {
             return false;
         }
@@ -513,20 +616,12 @@ var AutoSendResources = class extends MultUtil {
     // Lista de cidades candidatas a destino, ordenadas da MENOS desenvolvida
     // para a mais, filtrando as que estao quase cheias.
     // FIX v2.1: room minimo aumentado de 150 para 500 por recurso
-    _findLeastDevelopedTowns(townIds) {
+    _findLeastDevelopedTowns(townIds, cycle) {
         const candidates = [];
         for (const id of townIds) {
             try {
                 const town   = uw.ITowns.towns[id];
-                const res    = town.resources();
-
-                // FIX v2.1: verifica espaco minimo POR RECURSO (nao soma total)
-                const roomW = res.storage - res.wood;
-                const roomS = res.storage - res.stone;
-                const roomI = res.storage - res.iron;
-                const hasUsefulRoom = roomW >= 500 || roomS >= 500 || roomI >= 500;
-
-                if (!hasUsefulRoom) continue;
+                if (!this._hasRoomForAny(id, cycle)) continue;
                 if (this._isAlmostFull(id)) continue;
                 candidates.push({ id, score: this._getDevelopmentScore(town) });
             } catch (e) {}
@@ -543,13 +638,11 @@ var AutoSendResources = class extends MultUtil {
     //  FIX v2.1: margem de seguranca no destino aumentada de 5% para 10%
     //  FIX v2.1: verifica espaco real por recurso ANTES de calcular envio
     // ─────────────────────────────────────────────────────────────
-    _sendResources = async (fromId, toId, urgent) => {
-        if (uw.__multbot_captcha_active || this.isSleeping()) return false;
+    _sendResources = async (fromId, toId, urgent, cycle) => {
+        if (!cycle || !this._canRun(cycle.generation) || String(fromId) === String(toId)) return false;
         try {
             const from    = uw.ITowns.towns[fromId];
-            const to      = uw.ITowns.towns[toId];
             const fromRes = from.resources();
-            const toRes   = to.resources();
             const cap     = from.getAvailableTradeCapacity();
 
             if (cap < 100) return false;
@@ -568,24 +661,22 @@ var AutoSendResources = class extends MultUtil {
             const excessS = Math.max(0, Math.floor(fromRes.stone - keepAmt));
             const excessI = Math.max(0, Math.floor(fromRes.iron  - keepAmt));
 
-            // FIX v2.1: margem de seguranca de 10% no destino (era 5%)
-            // Garante que nunca enviamos mais do que o espaco disponivel
-            const safetyPct = 0.10;
-            const roomW = Math.max(0, Math.floor(toRes.storage * (1 - safetyPct) - toRes.wood));
-            const roomS = Math.max(0, Math.floor(toRes.storage * (1 - safetyPct) - toRes.stone));
-            const roomI = Math.max(0, Math.floor(toRes.storage * (1 - safetyPct) - toRes.iron));
-
-            // Distribui a capacidade de comercio igualmente entre os 3 recursos
-            const perRes = Math.floor(cap / 3);
-            const wood   = Math.min(perRes, excessW, roomW);
-            const stone  = Math.min(perRes, excessS, roomS);
-            const iron   = Math.min(perRes, excessI, roomI);
+            // O snapshot inclui o trânsito anterior; cada sucesso abaixo
+            // reserva espaço adicional, mesmo antes de o jogo atualizar o modelo.
+            const targetKey = String(toId);
+            const reserved = cycle.incoming.get(targetKey) || { wood: 0, stone: 0, iron: 0 };
+            const room = this._getResourceRoom(toId, cycle.incoming);
+            const { wood, stone, iron } = this._allocateResources({
+                wood: Math.min(excessW, room.wood),
+                stone: Math.min(excessS, room.stone),
+                iron: Math.min(excessI, room.iron),
+            }, cap);
             const total  = wood + stone + iron;
 
             if (total < 50) return false;
 
             const fromName = from.getName ? from.getName() : ('#' + fromId);
-            const toName   = to.getName   ? to.getName()   : ('#' + toId);
+            const toName   = this.getTownName(toId);
 
             this.console.log('[AutoRecursos] ' + (urgent ? '[URGENTE] ' : '') +
                 fromName + ' → ' + toName + ': ' +
@@ -601,13 +692,24 @@ var AutoSendResources = class extends MultUtil {
             };
 
             const res = await this.ajaxPostWithTimeout('town_info', 'trade', data, 15000, true);
-            if (res && !res.error) return true;
+            if (res && !res.error) {
+                cycle.incoming.set(targetKey, {
+                    wood: reserved.wood + wood,
+                    stone: reserved.stone + stone,
+                    iron: reserved.iron + iron,
+                });
+                return true;
+            }
+            if (!res) throw new Error('Envio sem confirmação do servidor.');
 
             this.console.log('[AutoRecursos] ✗ Erro trade: ' + (res && res.error ? res.error : JSON.stringify(res)));
             return false;
         } catch (e) {
-            this.console.log('[AutoRecursos] Exceção: ' + (e && e.message ? e.message : e));
-            return false;
+            // Um timeout de POST pode ter ocorrido depois de o servidor
+            // aceitar o envio. Não repete automaticamente um resultado incerto.
+            this.stop();
+            this._setLog('⚠ Envio sem confirmação. Confira o comércio antes de reiniciar.');
+            throw e;
         }
     };
 };
