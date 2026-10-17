@@ -551,6 +551,170 @@ test('Sniper: remover resultado incerto exige confirmação e não cancela tropa
     assert.equal(env.state.sniper_scheduled.length, 0);
 });
 
+/* Ambiente "rico" para as telas novas (MultTools, BotConsole,
+   MultStorage): jQuery seletor-aware, localStorage e os eventos de janela
+   que o construtor do MultStorage observa. O ambiente padrão acima
+   continua intocado para não alterar o comportamento dos testes antigos. */
+function richEnvironment(moduleFile) {
+    const env = environment(moduleFile);
+    const core = fs.readFileSync(path.join(root, 'Modules/core.js'), 'utf8');
+    vm.runInContext(
+        core.slice(core.indexOf('var BotConsole = class'), core.indexOf('var Compressor = class')),
+        env.context
+    );
+    vm.runInContext(
+        core.slice(core.indexOf('var Compressor = class'), core.indexOf('if (typeof uw.__multbot_captcha_active')),
+        env.context
+    );
+
+    const elements = new Map();
+    const makeElement = (key) => ({
+        key,
+        length: 1,
+        children: [],
+        _value: '',
+        _text: '',
+        empty() { this.children.length = 0; return this; },
+        append(child) { this.children.push(child); return this; },
+        appendTo(target) { target.children.push(this); return this; },
+        text(value) { if (value === undefined) return this._text; this._text = value; return this; },
+        val(value) { if (value === undefined) return this._value; this._value = value; return this; },
+        html(value) { if (value === undefined) return this._html ?? ''; this._html = value; return this; },
+        css() { return this; },
+        is() { return false; },
+        on() { return this; },
+        off() { return this; },
+        trigger() { return this; },
+    });
+    const jq = (selector) => {
+        if (typeof selector === 'string' && selector.trim().startsWith('<')) return makeElement(selector);
+        const key = String(selector);
+        if (!elements.has(key)) elements.set(key, makeElement(key));
+        return elements.get(key);
+    };
+    jq.Observer = () => ({ subscribe() { return true; } });
+
+    const localStorageData = {};
+    const localStorage = {
+        getItem: (key) => (key in localStorageData ? localStorageData[key] : null),
+        setItem: (key, value) => { localStorageData[key] = String(value); },
+        removeItem: (key) => { delete localStorageData[key]; },
+    };
+
+    env.context.uw.$ = jq;
+    env.context.uw.Game.world_id = 'test_world';
+    env.context.uw.GameEvents = { window: { open: {}, tab: { rendered: {} } } };
+    env.context.localStorage = localStorage;
+    return { ...env, jq, elements, localStorageData };
+}
+
+/* Objetos/arrays criados dentro do contexto do vm têm protótipos de outro
+   realm; deepStrictEqual (assert/strict) falha nessa diferença. Este helper
+   traz o valor para o realm do teste antes de comparar. */
+function plain(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
+function renameTown(id, x, y, name) {
+    return { id, getName: () => name, getIslandX: () => x, getIslandY: () => y };
+}
+
+test('MultTools: sanitiza o prefixo e cai no padrão OC quando inválido', () => {
+    const env = richEnvironment('mult_tools.js');
+    const tools = new env.context.MultTools(env.context.console, env.storage);
+
+    assert.equal(tools._sanitizePrefix('OC'), 'OC');
+    assert.equal(tools._sanitizePrefix('  br7 '), 'br7');
+    assert.equal(tools._sanitizePrefix('Mundo  A'), 'Mundo A');
+    assert.equal(tools._sanitizePrefix('a-b_c'), 'a-b_c');
+    assert.equal(tools._sanitizePrefix('abcdefghijklmnopqrst'), 'abcdefghijkl'); // corta em 12
+    assert.equal(tools._sanitizePrefix('<script>'), null);
+    assert.equal(tools._sanitizePrefix(''), null);
+    assert.equal(tools._sanitizePrefix('   '), null);
+    assert.equal(tools._sanitizePrefix(42), null);
+    assert.equal(tools._sanitizePrefix(null), null);
+
+    assert.equal(tools._renamePrefix, 'OC');
+
+    env.state.mt_rename_prefix = '<script>';
+    const fallback = new env.context.MultTools(env.context.console, env.storage);
+    assert.equal(fallback._renamePrefix, 'OC');
+});
+
+test('MultTools: plano de renomeação agrupa por oceano e aplica o prefixo', () => {
+    const env = richEnvironment('mult_tools.js');
+    const tools = new env.context.MultTools(env.context.console, env.storage);
+    env.context.uw.ITowns.towns = {
+        10: renameTown(10, 568, 411, 'Porto'),   // oceano 54
+        7: renameTown(7, 560, 393, 'Vila'),      // oceano 53
+        12: renameTown(12, 562, 398, 'Forte'),   // oceano 53
+    };
+
+    const plan = tools._buildRenamePlan('OC');
+    // Chaves inteiras de objeto iteram em ordem ascendente (7, 10, 12),
+    // então o oceano 53 entra no plano antes do 54.
+    assert.deepEqual(plain(plan.map(entry => entry.name)), ['OC53-01', 'OC53-02', 'OC54-01']);
+    assert.deepEqual(plain(plan.map(entry => entry.town.id)), [7, 12, 10]);
+
+    const custom = tools._buildRenamePlan('BR7');
+    assert.deepEqual(plain(custom.map(entry => entry.name)), ['BR753-01', 'BR753-02', 'BR754-01']);
+
+    assert.deepEqual(tools._buildRenamePlan('OC').length, 3);
+});
+
+test('BotConsole: filtro, contador e limpar', () => {
+    const env = richEnvironment();
+    const botConsole = new env.context.BotConsole(env.context.console, env.storage);
+    botConsole.log('ataque detectado em Roma');
+    botConsole.log('farm concluido em Atenas');
+
+    botConsole.updateSettings();
+    const $console = env.elements.get('#mult_console');
+    assert.equal($console.children.length, 2);
+    assert.equal(env.elements.get('#mult_console_count')._text, 'console_count');
+
+    env.jq('#mult_console_filter')._value = 'farm';
+    botConsole.filter = 'farm';
+    botConsole.updateSettings();
+    assert.equal($console.children.length, 1);
+    assert.match($console.children[0]._text, /farm concluido/);
+
+    env.jq('#mult_console_filter')._value = 'zzz';
+    botConsole.filter = 'zzz';
+    botConsole.updateSettings();
+    assert.equal($console.children.length, 1); // aviso de "nenhuma linha"
+    assert.equal($console.children[0]._text, 'console_no_match');
+
+    botConsole.filter = '';
+    botConsole.clear();
+    assert.equal(botConsole.string.length, 0);
+    assert.equal($console.children.length, 0);
+});
+
+test('MultStorage: importação de arquivo substitui o storage e rejeita lixo', () => {
+    const env = richEnvironment();
+    const storage = new env.context.MultStorage();
+
+    assert.deepEqual(plain(storage.getStorage()), {});
+
+    const ok = storage.importSettings(JSON.stringify({ mt_rename_prefix: 'BR', sleeper_start: '23:00' }));
+    assert.deepEqual(plain(ok), { ok: true, count: 2 });
+    assert.equal(storage.load('mt_rename_prefix'), 'BR');
+    assert.equal(storage.load('sleeper_start'), '23:00');
+    assert.equal(env.localStorageData.test_world_multBot, JSON.stringify({ mt_rename_prefix: 'BR', sleeper_start: '23:00' }));
+
+    assert.equal(storage.importSettings('{nao é json').ok, false);
+    assert.equal(storage.importSettings('[]').ok, false);
+    assert.equal(storage.importSettings('null').ok, false);
+    assert.equal(storage.importSettings('"texto"').ok, false);
+
+    // Import válido subsequente substitui por completo (não faz merge).
+    const second = storage.importSettings(JSON.stringify({ toasts_enabled: false }));
+    assert.deepEqual(plain(second), { ok: true, count: 1 });
+    assert.equal(storage.load('mt_rename_prefix'), null);
+    assert.equal(storage.load('toasts_enabled'), false);
+});
+
 (async () => {
     for (const { name, fn } of tests) {
         await fn();

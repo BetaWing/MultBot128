@@ -25,9 +25,11 @@ var StatusPanel = class extends MultUtil {
 
     settings = () => {
         requestAnimationFrame(() => this._startVisuals());
+        requestAnimationFrame(() => this._wireQuickSettings());
         const sleeperEnabled = this.storage.load('sleeper_enabled', false);
         const sleeperStart = this.storage.load('sleeper_start', '23:00');
         const sleeperEnd = this.storage.load('sleeper_end', '07:00');
+        const toastsEnabled = this.storage.load('toasts_enabled', true) !== false;
         return `
         <div style="padding:5px 8px;border-bottom:1px solid rgba(0,0,0,0.1);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <span style="font-weight:bold;font-size:12px;">${this.t('sleeper_label')}</span>
@@ -49,7 +51,89 @@ var StatusPanel = class extends MultUtil {
             <span id="refresh_status" style="font-size:11px;color:#5a3a0a;"></span>
             <span id="refresh_countdown" style="font-size:11px;color:#3a2a0a;font-weight:bold;margin-left:auto;"></span>
         </div>
+        <div style="padding:5px 8px;border-bottom:1px solid rgba(0,0,0,0.1);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-weight:bold;font-size:12px;">${this.t('qol_toasts_label')}</span>
+            <input id="toasts_enabled_input" type="checkbox" ${toastsEnabled ? 'checked' : ''} style="cursor:pointer;" />
+            <span style="font-size:10px;color:#8a7a5a;">${this.t('qol_toasts_desc')}</span>
+        </div>
+        <div style="padding:5px 8px;border-bottom:1px solid rgba(0,0,0,0.1);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-weight:bold;font-size:12px;">${this.t('backup_label')}</span>
+            ${this.getButtonHtml('btn_export_settings', '💾 ' + this.t('backup_export'), this._exportSettings, '')}
+            ${this.getButtonHtml('btn_import_settings', '📂 ' + this.t('backup_import'), this._importSettings, '')}
+            <input id="multbot_import_file" type="file" accept=".json,application/json" style="display:none;" />
+            <span id="backup_status" style="font-size:11px;color:#5a3a0a;"></span>
+        </div>
         <div id="status_rows" style="padding:4px;"></div>`;
+    };
+
+    /* Liga o checkbox de notificações e o fluxo de importação por arquivo.
+       Roda uma vez por render da aba (rAF); os elementos são recriados a
+       cada troca de aba, então o bind direto não acumula handlers. */
+    _wireQuickSettings = () => {
+        const $check = uw.$('#toasts_enabled_input');
+        if ($check.length) {
+            uw.$(document)
+                .off('change.multbot_toasts')
+                .on('change.multbot_toasts', '#toasts_enabled_input', (event) => {
+                    const enabled = uw.$(event.currentTarget).is(':checked');
+                    this.storage.save('toasts_enabled', enabled);
+                    this.console.log('[StatusPanel] ' + this.t('qol_toasts_label') + ': ' + (enabled ? this.t('active') : this.t('status_disabled')));
+                });
+        }
+
+        const $file = uw.$('#multbot_import_file');
+        if ($file.length) {
+            $file.off('change.multbot_import').on('change.multbot_import', (event) => {
+                const file = event.target?.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => this._applyImportedSettings(String(reader.result ?? ''));
+                reader.onerror = () => this._backupStatus(this.t('backup_import_error', { msg: 'read error' }), '#f87171');
+                reader.readAsText(file);
+                event.target.value = '';
+            });
+        }
+    };
+
+    _backupStatus = (message, color) => {
+        uw.$('#backup_status').text(message).css('color', color);
+    };
+
+    _exportSettings = () => {
+        try {
+            uw.multBot.storage.exportSettings();
+            const msg = this.t('backup_exported');
+            this._backupStatus(msg, '#1a6b2a');
+            this.console.log('[StatusPanel] ' + msg);
+            this.notify(msg, 'success');
+        } catch (e) {
+            const msg = this.t('backup_import_error', { msg: e?.message ?? e });
+            this._backupStatus(msg, '#f87171');
+            this.notify(msg, 'error');
+        }
+    };
+
+    _importSettings = () => {
+        uw.$('#multbot_import_file').trigger('click');
+    };
+
+    _applyImportedSettings = (text) => {
+        if (!confirm(this.t('backup_import_confirm'))) {
+            this._backupStatus(this.t('backup_import_cancelled'), '#8a2a2a');
+            return;
+        }
+        const result = uw.multBot.storage.importSettings(text);
+        if (!result.ok) {
+            const msg = this.t('backup_import_error', { msg: result.error });
+            this._backupStatus(msg, '#f87171');
+            this.notify(msg, 'error');
+            return;
+        }
+        const msg = this.t('backup_imported', { n: result.count });
+        this._backupStatus(msg, '#1a6b2a');
+        this.console.log('[StatusPanel] ' + msg);
+        this.notify(msg, 'success');
+        setTimeout(() => location.reload(), 1200);
     };
 
     _applySleeper = () => {
