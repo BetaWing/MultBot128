@@ -19,7 +19,7 @@ O `index.js` aguarda o jogo ficar pronto, baixa os módulos e monta o bundle no 
 
 | Área | Módulo | Descrição |
 |---|---|---|
-| Status | `status.js` | Estado dos módulos, Sleeper e recarga automática configurável |
+| Status | `status.js` | Painel categorizado com o estado de todos os módulos, Sleeper e recarga automática configurável |
 | Farm | `auto_farm.js` | Coleta recursos das aldeias rurais |
 | Farm | `auto_rural_level.js` | Desbloqueia e evolui aldeias rurais |
 | Farm | `auto_rural_trade.js` | Troca recursos com aldeias rurais |
@@ -49,6 +49,7 @@ O `index.js` aguarda o jogo ficar pronto, baixa os módulos e monta o bundle no 
 - **Notificações pop-up (toasts)**: aviso breve na tela quando uma operação em massa termina (presets, renomeação, backup). Não rouba cliques e pode ser desligado em **Status > Notificações pop-up**.
 - **Console com filtro e limpar**: campo de filtro por texto (com contador de linhas exibidas) e botão para limpar o histórico.
 - **Backup em arquivo**: em **Status > Backup das configurações**, exporta todas as configurações para um arquivo JSON e importa de volta (a importação substitui tudo e recarrega a página). É o par em arquivo do salvamento por nota do jogo.
+- **Aba Status reorganizada e completa**: painel de controle categorizado (Farm, Construção, Treino, Ataque, Defesa, Feitiços, Mix, Mult & Alertas) com **uma linha para cada um dos módulos do bot** — incluindo os que não apareciam: Troca com Rurais, Auto Bootcamp, Anti Rage, Auto Trade (manual) e Mult Tools. Cada categoria mostra a contagem de ligados/total e o topo do painel traz o resumo geral.
 
 ## Melhorias de confiabilidade
 

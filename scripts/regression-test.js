@@ -715,6 +715,63 @@ test('MultStorage: importação de arquivo substitui o storage e rejeita lixo', 
     assert.equal(storage.load('toasts_enabled'), false);
 });
 
+test('Status: painel categorizado cobre todos os modulos e soma o resumo', () => {
+    const env = richEnvironment('status.js');
+    const panel = new env.context.StatusPanel(env.context.console, env.storage);
+
+    // Bot simulado com TODOS os modulos instanciados pelo multbot.js.
+    env.context.uw.multBot = {
+        autoFarm: { active: true },
+        autoRuralLevel: { enable: true, rural_level: 8 },
+        autoRuralTrade: { auto_trade_resouces_loop: null, trade_resouce: 'wood' },
+        autoSendResources: { _active: false },
+        autoBuild: { towns_buildings: { 1: {} } },
+        autoGratis: { autogratis: false },
+        autoTrain: { city_troops: { 1: {} } },
+        autoResearch: { _active: true },
+        autoAttack: { _active: false },
+        autoBootcamp: { enable_auto_bootcamp: null, use_def: false },
+        antiRage: { loop_funct: null },
+        sniper: { _scheduled: [{ status: 'pending' }] },
+        autoMilitia: { _active: true },
+        autoDodge: { _active: false },
+        autoSpells: { _aresActive: false },
+        autoParty: { enable: false },
+        autoHide: { _active: false },
+        autoQuest: { _active: false },
+        colonizeShipSender: { _running: false, config: { targetTownId: 1 } },
+        discordAlert: { _active: true },
+        multTools: { _renamePrefix: 'BR7' },
+        autoTrade: {},
+    };
+
+    panel._render();
+    const html = env.elements.get('#status_rows')._html;
+
+    for (const category of ['cat_farm', 'cat_build', 'cat_train', 'cat_attack', 'cat_defense', 'cat_spells', 'cat_mix', 'cat_mult']) {
+        assert.ok(html.includes(category), `Categoria ausente no painel: ${category}`);
+    }
+
+    // Uma linha por automacao/ferramenta do bot (os 23 modulos instanciados
+    // pelo multbot.js; Status/Sleeper/Auto Refresh ficam acima das linhas).
+    for (const row of ['row_farm', 'row_rural', 'row_rural_trade', 'row_send_resources', 'row_build', 'row_free_build',
+        'row_train', 'row_research', 'row_attack', 'row_bootcamp', 'row_anti_rage', 'row_sniper', 'row_militia',
+        'row_dodge', 'row_ares', 'row_party', 'row_hide', 'row_quest', 'row_colonize_ship', 'row_discord',
+        'row_mult_tools', 'row_trade_manual']) {
+        assert.ok(html.includes(row), `Linha ausente no painel: ${row}`);
+    }
+
+    // Cabecalhos com contagem "ativos/total" e resumo no topo.
+    assert.match(html, /\d+\/\d+/);
+    assert.equal(env.elements.get('#status_summary')._text, 'status_summary');
+
+    // Botao correto por estado: Militia ligada -> stop; Colonize desligado -> start.
+    assert.ok(html.includes('window.multBot.autoMilitia.stop()'));
+    assert.ok(html.includes('window.multBot.colonizeShipSender.start()'));
+    // Troca com rurais parada nao oferece start (exige escolher o recurso).
+    assert.ok(!html.includes('window.multBot.autoRuralTrade.main()'));
+});
+
 (async () => {
     for (const { name, fn } of tests) {
         await fn();
