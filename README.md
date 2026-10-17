@@ -19,7 +19,7 @@ O `index.js` aguarda o jogo ficar pronto, baixa os módulos e monta o bundle no 
 
 | Área | Módulo | Descrição |
 |---|---|---|
-| Status | `status.js` | Estado dos módulos, Sleeper e recarga automática configurável |
+| Status | `status.js` | Painel categorizado com o estado de todos os módulos, Sleeper e recarga automática configurável |
 | Farm | `auto_farm.js` | Coleta recursos das aldeias rurais |
 | Farm | `auto_rural_level.js` | Desbloqueia e evolui aldeias rurais |
 | Farm | `auto_rural_trade.js` | Troca recursos com aldeias rurais |
@@ -38,10 +38,18 @@ O `index.js` aguarda o jogo ficar pronto, baixa os módulos e monta o bundle no 
 | Mix | `auto_hide.js` | Armazena prata/ferro no esconderijo |
 | Mix | `auto_quest.js` | Decide, aceita e coleta missões de ilha |
 | Mix | `discord_alert.js` | Envia alerta de ataque para um webhook HTTPS do Discord |
-| Mult | `mult_tools.js` | Presets em massa e renomeação de cidades |
+| Mult | `mult_tools.js` | Presets em massa e renomeação de cidades com prefixo configurável |
 | Mult | `colonize_ship_sender.js` | Envia navios colonizadores em apoio para um destino |
 | Outros | `anti_rage.js` | Automação do poder Fúria/Purificação |
 | Outros | `auto_trade.js` | Rotina auxiliar de comércio |
+
+## Novidades da versão 1.10.0
+
+- **Prefixo da renomeação de cidades** (aba Mult): o texto que vem antes do número do oceano não é mais fixo (`OC`). Dá para escolher qualquer prefixo (letras, números, espaço, `-` ou `_`, até 12 caracteres), com exemplo e **prévia ao vivo** dos nomes antes de aplicar. O padrão continua `OCxx-NN` e o prefixo fica salvo por conta.
+- **Notificações pop-up (toasts)**: aviso breve na tela quando uma operação em massa termina (presets, renomeação, backup). Não rouba cliques e pode ser desligado em **Status > Notificações pop-up**.
+- **Console com filtro e limpar**: campo de filtro por texto (com contador de linhas exibidas) e botão para limpar o histórico.
+- **Backup em arquivo**: em **Status > Backup das configurações**, exporta todas as configurações para um arquivo JSON e importa de volta (a importação substitui tudo e recarrega a página). É o par em arquivo do salvamento por nota do jogo.
+- **Aba Status reorganizada e completa**: painel de controle categorizado (Farm, Construção, Treino, Ataque, Defesa, Feitiços, Mix, Mult & Alertas) com **uma linha para cada um dos módulos do bot** — incluindo os que não apareciam: Troca com Rurais, Auto Bootcamp, Anti Rage, Auto Trade (manual) e Mult Tools. Cada categoria mostra a contagem de ligados/total e o topo do painel traz o resumo geral.
 
 ## Melhorias de confiabilidade
 

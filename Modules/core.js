@@ -145,6 +145,24 @@ __MultBotI18N.dict = {
 		row_discord: '🔔 Discord Alert',
 		row_sniper: '🎯 Sniper',
 		row_sniper_pending: '{n} pending',
+		cat_farm: '🌾 Farm',
+		cat_build: '🏗 Building',
+		cat_train: '⚔ Training',
+		cat_attack: '🗡 Attack',
+		cat_defense: '🛡 Defense',
+		cat_spells: '⚡ Spells',
+		cat_mix: '🎉 Mix',
+		cat_mult: '⚓ Mult & Alerts',
+		status_summary: '{active}/{total} modules active',
+		row_rural_trade: '💰 Rural Trade',
+		row_bootcamp: '🏕 Auto Bootcamp',
+		row_anti_rage: '😤 Anti Rage',
+		row_trade_manual: '🚢 Auto Trade (manual)',
+		row_mult_tools: '🛠 Mult Tools',
+		rt_trading: 'Trading {res}',
+		manual_via_console: 'Manual (browser console)',
+		ar_armed: 'Armed (attack window)',
+		mt_prefix_value: 'Rename prefix: {prefix}',
 		mt_colonize_label: 'Colonize Ships',
 		at_min_batch_tip: 'Minimum share of the configured storage limit required before creating a recruitment order.',
 		ah_silver_desc: 'Automatically stores silver in every eligible hideout.',
@@ -497,10 +515,31 @@ __MultBotI18N.dict = {
 		aq_accepted_count: '{count}/{max} quests accepted',
 		aq_max_accepted_log: '⚠ {max}/{max} quests accepted already - waiting for a slot to open before accepting more.',
 		mt_rename_label: 'City Names',
-		mt_rename_desc: 'Renames all cities as OCxx-NN (ocean + sequence, ordered by city ID).',
+		mt_rename_desc: 'Renames all cities as PREFIXxx-NN (ocean number + sequence, ordered by city ID). The prefix is chosen below.',
 		mt_renamed_log: '✓ {town}: renamed to {name}',
 		mt_rename_error: '✗ {town}: rename failed - {msg}',
 		mt_rename_complete: '✓ {count} cities renamed.',
+		mt_rename_prefix_label: 'Prefix',
+		mt_rename_prefix_hint: 'What comes before the ocean number. Letters, numbers, space, "-" or "_" (max 12 characters). Example: {example}',
+		mt_rename_prefix_saved: '✓ Prefix saved: {prefix}',
+		mt_rename_prefix_invalid: 'Invalid prefix. Use letters, numbers, space, "-" or "_" (max 12 characters).',
+		mt_rename_preview: 'Preview (first cities)',
+		mt_rename_preview_empty: 'No cities found for the preview.',
+		mt_rename_preview_more: '+{n} more city(ies)...',
+		qol_toasts_label: 'Pop-up notifications',
+		qol_toasts_desc: 'Shows a brief on-screen message when a bulk operation finishes (presets, renames, backups).',
+		console_clear: 'Clear',
+		console_filter_placeholder: 'Filter lines...',
+		console_count: '{shown}/{total} lines',
+		console_no_match: 'No line matches the filter.',
+		backup_label: 'Settings backup',
+		backup_export: 'Export file',
+		backup_import: 'Import file',
+		backup_exported: '✓ Settings exported to a file.',
+		backup_imported: '✓ {n} settings imported. Reloading...',
+		backup_import_error: '✗ Invalid file: {msg}',
+		backup_import_confirm: 'Importing REPLACES all local MultBot settings with the file content. Continue?',
+		backup_import_cancelled: 'Import cancelled.',
 		aq_challenged_log: '✓ Challenge accepted for: {name}',
 		aq_challenge_fail_log: '✗ Failed to accept challenge {name}: {reason}',
 		aq_challenge_network_error: '✗ Network error accepting challenge {name}: {msg}',
@@ -616,6 +655,24 @@ __MultBotI18N.dict = {
 		row_discord: '🔔 Alerta Discord',
 		row_sniper: '🎯 Sniper',
 		row_sniper_pending: '{n} pendente(s)',
+		cat_farm: '🌾 Farm',
+		cat_build: '🏗 Construção',
+		cat_train: '⚔ Treino',
+		cat_attack: '🗡 Ataque',
+		cat_defense: '🛡 Defesa',
+		cat_spells: '⚡ Feitiços',
+		cat_mix: '🎉 Mix',
+		cat_mult: '⚓ Mult & Alertas',
+		status_summary: '{active}/{total} módulos ativos',
+		row_rural_trade: '💰 Troca com Rurais',
+		row_bootcamp: '🏕 Auto Bootcamp',
+		row_anti_rage: '😤 Anti Rage',
+		row_trade_manual: '🚢 Auto Trade (manual)',
+		row_mult_tools: '🛠 Mult Tools',
+		rt_trading: 'Trocando {res}',
+		manual_via_console: 'Manual (console do navegador)',
+		ar_armed: 'Armado (janela de ataque)',
+		mt_prefix_value: 'Prefixo da renomeação: {prefix}',
 		mt_colonize_label: 'Navios Colonizadores',
 		at_min_batch_tip: 'Parcela mínima do limite de armazém configurado necessária antes de criar uma ordem de recrutamento.',
 		ah_silver_desc: 'Guarda prata automaticamente em todos os esconderijos elegíveis.',
@@ -968,10 +1025,31 @@ __MultBotI18N.dict = {
 		aq_accepted_count: '{count}/{max} missões aceitas',
 		aq_max_accepted_log: '⚠ {max}/{max} missões já aceitas - aguardando abrir vaga antes de aceitar mais.',
 		mt_rename_label: 'Nomes das Cidades',
-		mt_rename_desc: 'Renomeia todas as cidades como OCxx-NN (oceano + sequência, ordenado por ID da cidade).',
+		mt_rename_desc: 'Renomeia todas as cidades como PREFIXOxx-NN (número do oceano + sequência, ordenado por ID da cidade). O prefixo é escolhido abaixo.',
 		mt_renamed_log: '✓ {town}: renomeado para {name}',
 		mt_rename_error: '✗ {town}: falha ao renomear - {msg}',
 		mt_rename_complete: '✓ {count} cidade(s) renomeada(s).',
+		mt_rename_prefix_label: 'Prefixo',
+		mt_rename_prefix_hint: 'O que vem antes do número do oceano. Letras, números, espaço, "-" ou "_" (máx. 12 caracteres). Exemplo: {example}',
+		mt_rename_prefix_saved: '✓ Prefixo salvo: {prefix}',
+		mt_rename_prefix_invalid: 'Prefixo inválido. Use letras, números, espaço, "-" ou "_" (máx. 12 caracteres).',
+		mt_rename_preview: 'Prévia (primeiras cidades)',
+		mt_rename_preview_empty: 'Nenhuma cidade encontrada para a prévia.',
+		mt_rename_preview_more: '+{n} cidade(s)...',
+		qol_toasts_label: 'Notificações pop-up',
+		qol_toasts_desc: 'Mostra uma mensagem rápida na tela quando uma operação em massa termina (presets, renomeações, backups).',
+		console_clear: 'Limpar',
+		console_filter_placeholder: 'Filtrar linhas...',
+		console_count: '{shown}/{total} linhas',
+		console_no_match: 'Nenhuma linha corresponde ao filtro.',
+		backup_label: 'Backup das configurações',
+		backup_export: 'Exportar arquivo',
+		backup_import: 'Importar arquivo',
+		backup_exported: '✓ Configurações exportadas para um arquivo.',
+		backup_imported: '✓ {n} configurações importadas. Recarregando...',
+		backup_import_error: '✗ Arquivo inválido: {msg}',
+		backup_import_confirm: 'Importar SUBSTITUI todas as configurações locais do MultBot pelo conteúdo do arquivo. Continuar?',
+		backup_import_cancelled: 'Importação cancelada.',
 		aq_challenged_log: '✓ Desafio aceito para: {name}',
 		aq_challenge_fail_log: '✗ Falha ao aceitar desafio {name}: {reason}',
 		aq_challenge_network_error: '✗ Erro de rede ao aceitar desafio {name}: {msg}',
@@ -1103,6 +1181,12 @@ var MultUtil = class {
        (so a missing translation never breaks rendering - worst case
        you see the raw key instead of a crash). */
     t = (key, vars) => multT(key, vars);
+
+    /* Notificação temporária na tela (toast). Não loga no console -
+       quem chama já decide se também quer registro no console. */
+    notify = (message, type = 'info') => {
+        try { multToast(message, type); } catch (e) {}
+    };
 
     /* Escapa conteúdo dinâmico antes de interpolá-lo em templates HTML.
        Prefira .text() quando já houver um elemento jQuery disponível. */
@@ -1477,23 +1561,107 @@ var MultUtil = class {
    multbot.js (dead code) and was the last network call that
    depended on Sau1707's repository. */
 
+/* ══════════════════════════════════════════════════════
+   Toasts: notificações temporárias na tela do jogo.
+   - container único, criado sob demanda, pointer-events:none
+     (nunca rouba cliques do jogador);
+   - mensagem sempre via .text(), nunca innerHTML: nomes de
+     cidade vêm do servidor e não devem ser interpretados;
+   - desativável em Status > Notificações pop-up
+     (chave "toasts_enabled", padrão ligado).
+   ══════════════════════════════════════════════════════ */
+var multToast = function (message, type = 'info', timeoutMs) {
+    try {
+        if (!message) return;
+
+        let enabled = true;
+        try { enabled = uw.multBot?.storage?.load('toasts_enabled', true) !== false; } catch (e) {}
+        if (!enabled) return;
+
+        const duration = timeoutMs ?? (type === 'error' ? 7000 : 4000);
+
+        if (!uw.$('#multbot_toast_style').length) {
+            uw.$('<style id="multbot_toast_style">').text(`
+                #multbot_toasts {
+                    position: fixed; top: 46px; left: 50%; transform: translateX(-50%);
+                    z-index: 999999; display: flex; flex-direction: column;
+                    align-items: center; gap: 4px; pointer-events: none;
+                }
+                .multbot_toast {
+                    max-width: 420px; padding: 6px 14px; font-size: 12px; font-weight: bold;
+                    font-family: Arial, sans-serif; color: #f5e6c8;
+                    background: rgba(32, 22, 10, 0.94); border: 1px solid #c8a86a;
+                    border-radius: 4px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
+                    opacity: 1; transition: opacity 0.25s ease, transform 0.25s ease;
+                }
+                .multbot_toast.multbot_toast_success { border-color: #4ade80; color: #dcfce7; }
+                .multbot_toast.multbot_toast_error   { border-color: #f87171; color: #fee2e2; }
+                .multbot_toast.multbot_toast_hiding  { opacity: 0; transform: translateY(-8px); }
+            `).appendTo('head');
+        }
+
+        let $container = uw.$('#multbot_toasts');
+        if (!$container.length) {
+            $container = uw.$('<div id="multbot_toasts"></div>');
+            (uw.$('#ui_box').length ? uw.$('#ui_box') : uw.$('body')).append($container);
+        }
+
+        const $toast = uw.$('<div>').addClass('multbot_toast').text(String(message));
+        if (type === 'success') $toast.addClass('multbot_toast_success');
+        if (type === 'error') $toast.addClass('multbot_toast_error');
+        $container.append($toast);
+
+        setTimeout(() => {
+            $toast.addClass('multbot_toast_hiding');
+            setTimeout(() => { try { $toast.remove(); } catch (e) {} }, 300);
+        }, duration);
+    } catch (e) {}
+};
+
 var BotConsole = class {
 	MAX_ENTRIES = 200;
 
 	constructor() {
 		this.string = [];
+		this.filter = '';
 		this.updateSettings();
 	}
 
 	renderSettings = () => {
 		setTimeout(() => {
+			this._wireToolbar();
 			this.updateSettings();
 			let interval = setInterval(() => {
 				this.updateSettings();
 				if (!uw.$('#mult_console').length) clearInterval(interval);
 			}, 1000);
 		}, 100);
-		return `<div class="console_multbot" id="mult_console"><div>`;
+		return `
+		<div id="mult_console_toolbar" style="display:flex;align-items:center;gap:6px;padding:4px 6px;">
+			<input id="mult_console_filter" type="text" autocomplete="off"
+				placeholder="${multT('console_filter_placeholder')}"
+				style="flex:1;min-width:120px;padding:3px 6px;font-size:11px;" />
+			<span id="mult_console_count" style="font-size:10px;color:#8a7a5a;white-space:nowrap;"></span>
+			<div class="button_new" onclick="window.multBot.console.clear()" style="cursor:pointer;margin:0;">
+				<div class="left"></div><div class="right"></div>
+				<div class="caption js-caption">${multT('console_clear')}<div class="effect js-effect"></div></div>
+			</div>
+		</div>
+		<div class="console_multbot" id="mult_console"></div>`;
+	};
+
+	/* Liga o campo de filtro uma vez por render da aba. Evento com
+	   namespace para não empilhar handlers a cada troca de aba. */
+	_wireToolbar = () => {
+		const $filter = uw.$('#mult_console_filter');
+		if (!$filter.length) return;
+		$filter.val(this.filter);
+		uw.$(document)
+			.off('input.multbot_console')
+			.on('input.multbot_console', '#mult_console_filter', (event) => {
+				this.filter = uw.$(event.currentTarget).val() ?? '';
+				this.updateSettings();
+			});
 	};
 
 	log = (string) => {
@@ -1506,6 +1674,11 @@ var BotConsole = class {
 		}
 	};
 
+	clear = () => {
+		this.string.length = 0;
+		this.updateSettings();
+	};
+
 	updateSettings = () => {
 		const $console = uw.$('#mult_console');
 		if (!$console.length) return;
@@ -1515,9 +1688,21 @@ var BotConsole = class {
 		   removido, todos os ids continuavam iguais e o painel parava de
 		   atualizar. Usar .text() também impede que mensagens vindas do
 		   servidor sejam interpretadas como HTML. */
+		const filter = (this.filter ?? '').trim().toLowerCase();
 		$console.empty();
+		let shown = 0;
 		for (let i = this.string.length - 1; i >= 0; i--) {
+			if (filter && !this.string[i].toLowerCase().includes(filter)) continue;
 			uw.$('<p>').text(this.string[i]).appendTo($console);
+			shown++;
+		}
+		if (filter && shown === 0) {
+			uw.$('<p>').css('color', '#8a7a5a').text(multT('console_no_match')).appendTo($console);
+		}
+
+		const $count = uw.$('#mult_console_count');
+		if ($count.length) {
+			$count.text(multT('console_count', { shown, total: this.string.length }));
 		}
 	};
 };
@@ -1941,6 +2126,42 @@ var MultStorage = class extends Compressor {
 			},
 			() => {}
 		);
+	};
+
+	/* Backup em arquivo (JSON cru do localStorage). É o par inverso do
+	   save/load por nota do jogo: aqui não passa pelo Compressor, então
+	   o arquivo gerado é o mesmo formato lido de volta. */
+	exportSettings = () => {
+		const data = JSON.stringify(this.getStorage(), null, 2);
+		const blob = new Blob([data], { type: 'application/json' });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = `multbot-settings-${uw.Game.world_id}.json`;
+		document.body.appendChild(link);
+		link.click();
+		link.remove();
+		setTimeout(() => URL.revokeObjectURL(url), 2000);
+		return true;
+	};
+
+	/* Substitui TODO o storage local pelo conteúdo do arquivo. A
+	   confirmação e o reload ficam na camada de interface (StatusPanel),
+	   para este método continuar puro/testável. */
+	importSettings = (text) => {
+		let parsed;
+		try {
+			parsed = JSON.parse(text);
+		} catch (error) {
+			return { ok: false, error: error?.message ?? String(error) };
+		}
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+			return { ok: false, error: 'root is not an object' };
+		}
+		if (!this.saveStorage(parsed)) {
+			return { ok: false, error: 'could not save to localStorage' };
+		}
+		return { ok: true, count: Object.keys(parsed).length };
 	};
 
 	getActiveNote() {

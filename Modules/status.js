@@ -25,9 +25,11 @@ var StatusPanel = class extends MultUtil {
 
     settings = () => {
         requestAnimationFrame(() => this._startVisuals());
+        requestAnimationFrame(() => this._wireQuickSettings());
         const sleeperEnabled = this.storage.load('sleeper_enabled', false);
         const sleeperStart = this.storage.load('sleeper_start', '23:00');
         const sleeperEnd = this.storage.load('sleeper_end', '07:00');
+        const toastsEnabled = this.storage.load('toasts_enabled', true) !== false;
         return `
         <div style="padding:5px 8px;border-bottom:1px solid rgba(0,0,0,0.1);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <span style="font-weight:bold;font-size:12px;">${this.t('sleeper_label')}</span>
@@ -49,7 +51,92 @@ var StatusPanel = class extends MultUtil {
             <span id="refresh_status" style="font-size:11px;color:#5a3a0a;"></span>
             <span id="refresh_countdown" style="font-size:11px;color:#3a2a0a;font-weight:bold;margin-left:auto;"></span>
         </div>
+        <div style="padding:5px 8px;border-bottom:1px solid rgba(0,0,0,0.1);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-weight:bold;font-size:12px;">${this.t('qol_toasts_label')}</span>
+            <input id="toasts_enabled_input" type="checkbox" ${toastsEnabled ? 'checked' : ''} style="cursor:pointer;" />
+            <span style="font-size:10px;color:#8a7a5a;">${this.t('qol_toasts_desc')}</span>
+        </div>
+        <div style="padding:5px 8px;border-bottom:1px solid rgba(0,0,0,0.1);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-weight:bold;font-size:12px;">${this.t('backup_label')}</span>
+            ${this.getButtonHtml('btn_export_settings', '💾 ' + this.t('backup_export'), this._exportSettings, '')}
+            ${this.getButtonHtml('btn_import_settings', '📂 ' + this.t('backup_import'), this._importSettings, '')}
+            <input id="multbot_import_file" type="file" accept=".json,application/json" style="display:none;" />
+            <span id="backup_status" style="font-size:11px;color:#5a3a0a;"></span>
+        </div>
+        <div style="padding:3px 8px;border-bottom:1px solid rgba(0,0,0,0.1);display:flex;align-items:center;gap:8px;">
+            <span id="status_summary" style="font-size:11px;font-weight:bold;color:#5a3a0a;"></span>
+        </div>
         <div id="status_rows" style="padding:4px;"></div>`;
+    };
+
+    /* Liga o checkbox de notificações e o fluxo de importação por arquivo.
+       Roda uma vez por render da aba (rAF); os elementos são recriados a
+       cada troca de aba, então o bind direto não acumula handlers. */
+    _wireQuickSettings = () => {
+        const $check = uw.$('#toasts_enabled_input');
+        if ($check.length) {
+            uw.$(document)
+                .off('change.multbot_toasts')
+                .on('change.multbot_toasts', '#toasts_enabled_input', (event) => {
+                    const enabled = uw.$(event.currentTarget).is(':checked');
+                    this.storage.save('toasts_enabled', enabled);
+                    this.console.log('[StatusPanel] ' + this.t('qol_toasts_label') + ': ' + (enabled ? this.t('active') : this.t('status_disabled')));
+                });
+        }
+
+        const $file = uw.$('#multbot_import_file');
+        if ($file.length) {
+            $file.off('change.multbot_import').on('change.multbot_import', (event) => {
+                const file = event.target?.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => this._applyImportedSettings(String(reader.result ?? ''));
+                reader.onerror = () => this._backupStatus(this.t('backup_import_error', { msg: 'read error' }), '#f87171');
+                reader.readAsText(file);
+                event.target.value = '';
+            });
+        }
+    };
+
+    _backupStatus = (message, color) => {
+        uw.$('#backup_status').text(message).css('color', color);
+    };
+
+    _exportSettings = () => {
+        try {
+            uw.multBot.storage.exportSettings();
+            const msg = this.t('backup_exported');
+            this._backupStatus(msg, '#1a6b2a');
+            this.console.log('[StatusPanel] ' + msg);
+            this.notify(msg, 'success');
+        } catch (e) {
+            const msg = this.t('backup_import_error', { msg: e?.message ?? e });
+            this._backupStatus(msg, '#f87171');
+            this.notify(msg, 'error');
+        }
+    };
+
+    _importSettings = () => {
+        uw.$('#multbot_import_file').trigger('click');
+    };
+
+    _applyImportedSettings = (text) => {
+        if (!confirm(this.t('backup_import_confirm'))) {
+            this._backupStatus(this.t('backup_import_cancelled'), '#8a2a2a');
+            return;
+        }
+        const result = uw.multBot.storage.importSettings(text);
+        if (!result.ok) {
+            const msg = this.t('backup_import_error', { msg: result.error });
+            this._backupStatus(msg, '#f87171');
+            this.notify(msg, 'error');
+            return;
+        }
+        const msg = this.t('backup_imported', { n: result.count });
+        this._backupStatus(msg, '#1a6b2a');
+        this.console.log('[StatusPanel] ' + msg);
+        this.notify(msg, 'success');
+        setTimeout(() => location.reload(), 1200);
     };
 
     _applySleeper = () => {
@@ -175,6 +262,11 @@ var StatusPanel = class extends MultUtil {
         uw.$('#refresh_countdown').text(`⏱ ${mm}:${ss}`);
     }
 
+    /* Painel categorizado: uma linha por módulo do bot, agrupada por
+       área (mesma ordem das abas da janela). A contagem do cabeçalho e o
+       resumo no topo saem do próprio array de linhas, então um módulo
+       novo adicionado aqui aparece no painel e nas contagens sem
+       precisar de mais nenhuma mudança. */
     _render() {
         try {
             const bot  = uw.multBot;
@@ -204,31 +296,97 @@ var StatusPanel = class extends MultUtil {
             const aresActive     = !!bot.autoSpells?._aresActive;
             const researchActive = !!bot.autoResearch?._active;
 
-            rows.push(this._row(this.t('row_farm'),           farmActive,  farmActive  ? this.t('active')               : this.t('stopped'),             'autoFarm',           'toggle'));
-            rows.push(this._row(this.t('row_rural'),    ruralActive, ruralActive ? this.t('level_label', { n: bot.autoRuralLevel.rural_level }) : this.t('stopped'), 'autoRuralLevel', 'toggle'));
-            rows.push(this._row(this.t('row_build'),        buildCount > 0, buildCount > 0 ? this.t('cities_count', { n: buildCount }) : this.t('no_city'), null, null));
-            rows.push(this._row(this.t('row_train'),      trainCount > 0, trainCount > 0 ? this.t('cities_count', { n: trainCount }) : this.t('no_city'), null, null));
-            rows.push(this._row(this.t('row_party'),      partyActive, partyActive ? celStr : this.t('stopped'),     'autoParty',          'toggle'));
-            rows.push(this._row(this.t('row_free_build'), gratisActive, gratisActive ? this.t('active') : this.t('stopped'), 'autoGratis',          'toggle'));
-            rows.push(this._row(this.t('row_send_resources'), asrActive,   asrActive   ? this.t('active') : this.t('stopped'),   'autoSendResources',  'toggle'));
-            rows.push(this._row(this.t('row_militia'),      militiaActive, militiaActive ? this.t('active') : this.t('stopped'), 'autoMilitia', militiaActive ? 'stop' : 'start'));
-            rows.push(this._row(this.t('row_colonize_ship'), cssActive,   cssActive   ? `→ ${this.getTownName(bot.colonizeShipSender.config.targetTownId)}` : this.t('stopped'), 'colonizeShipSender', cssActive ? 'stop' : 'start'));
+            // Módulos que faltavam no painel (rodada de completude):
+            // Troca com Rurais (loop por recurso), Bootcamp, Anti Rage
+            // (reativo, sem toggle), Auto Trade (manual) e Mult Tools
+            // (ações avulsas - mostramos o prefixo de renomeação).
+            const rtActive   = !!bot.autoRuralTrade?.auto_trade_resouces_loop;
+            const rtResource = bot.autoRuralTrade?.trade_resouce;
+            const bootcampActive = !!bot.autoBootcamp?.enable_auto_bootcamp;
+            const bootcampMode   = bot.autoBootcamp?.use_def ? this.t('abc_off_def') : this.t('abc_only_off');
+            const rageArmed      = !!bot.antiRage?.loop_funct;
 
-            // Rows added this round
-            rows.push(this._row(this.t('row_attack'),        attackActive,   attackActive   ? this.t('active') : this.t('stopped'), 'autoAttack',        'toggle'));
-            rows.push(this._row(this.t('row_dodge'),  dodgeActive,    dodgeActive    ? this.t('active') : this.t('stopped'), 'autoDodge',         'toggle'));
-            rows.push(this._row(this.t('row_ares'),  aresActive,     aresActive     ? this.t('active') : this.t('stopped'), 'autoSpells', '_toggleAres'));
-            rows.push(this._row(this.t('row_research'),       researchActive, researchActive ? this.t('active') : this.t('stopped'), 'autoResearch',      'toggle'));
-            rows.push(this._row(this.t('row_hide'),          hideActive,    hideActive    ? this.t('active') : this.t('stopped'),                'autoHide',          'toggle'));
-            rows.push(this._row(this.t('row_quest'),         questActive,   questActive   ? this.t('active') : this.t('stopped'),                'autoQuest',         'toggle'));
-            rows.push(this._row(this.t('row_discord'),       discordActive, discordActive ? this.t('active') : this.t('stopped'),                'discordAlert',      'toggle'));
-            rows.push(this._row(this.t('row_sniper'),        sniperPending > 0, sniperPending > 0 ? this.t('row_sniper_pending', { n: sniperPending }) : this.t('stopped'), null, null));
+            const group = (label, entries) => rows.push({ label, entries });
 
-            uw.$('#status_rows').html(rows.join(''));
+            group(this.t('cat_farm'), [
+                { label: this.t('row_farm'),           active: farmActive,  value: farmActive  ? this.t('active')               : this.t('stopped'), module: 'autoFarm',           method: 'toggle' },
+                { label: this.t('row_rural'),    active: ruralActive, value: ruralActive ? this.t('level_label', { n: bot.autoRuralLevel?.rural_level ?? '?' }) : this.t('stopped'), module: 'autoRuralLevel', method: 'toggle' },
+                { label: this.t('row_rural_trade'), active: rtActive,   value: rtActive ? this.t('rt_trading', { res: rtResource ?? '?' }) : this.t('stopped'), module: rtActive ? 'autoRuralTrade' : null, method: rtActive ? 'main' : null },
+                { label: this.t('row_send_resources'), active: asrActive,   value: asrActive   ? this.t('active') : this.t('stopped'),   module: 'autoSendResources',  method: 'toggle' },
+            ]);
+
+            group(this.t('cat_build'), [
+                { label: this.t('row_build'),        active: buildCount > 0, value: buildCount > 0 ? this.t('cities_count', { n: buildCount }) : this.t('no_city'), module: null, method: null },
+                { label: this.t('row_free_build'), active: gratisActive, value: gratisActive ? this.t('active') : this.t('stopped'), module: 'autoGratis',          method: 'toggle' },
+            ]);
+
+            group(this.t('cat_train'), [
+                { label: this.t('row_train'),      active: trainCount > 0, value: trainCount > 0 ? this.t('cities_count', { n: trainCount }) : this.t('no_city'), module: null, method: null },
+                { label: this.t('row_research'),       active: researchActive, value: researchActive ? this.t('active') : this.t('stopped'), module: 'autoResearch',      method: 'toggle' },
+            ]);
+
+            group(this.t('cat_attack'), [
+                { label: this.t('row_attack'),        active: attackActive,   value: attackActive   ? this.t('active') : this.t('stopped'),   module: 'autoAttack',        method: 'toggle' },
+                { label: this.t('row_bootcamp'), active: bootcampActive, value: bootcampActive ? `${this.t('active')} · ${bootcampMode}` : this.t('stopped'), module: 'autoBootcamp', method: 'toggle' },
+                { label: this.t('row_anti_rage'), active: rageArmed, value: rageArmed ? this.t('active') : this.t('ar_armed'), module: null, method: null },
+                { label: this.t('row_sniper'),        active: sniperPending > 0, value: sniperPending > 0 ? this.t('row_sniper_pending', { n: sniperPending }) : this.t('stopped'), module: null, method: null },
+            ]);
+
+            group(this.t('cat_defense'), [
+                { label: this.t('row_militia'),      active: militiaActive, value: militiaActive ? this.t('active') : this.t('stopped'), module: 'autoMilitia', method: militiaActive ? 'stop' : 'start' },
+                { label: this.t('row_dodge'),  active: dodgeActive,    value: dodgeActive    ? this.t('active') : this.t('stopped'), module: 'autoDodge',         method: 'toggle' },
+            ]);
+
+            group(this.t('cat_spells'), [
+                { label: this.t('row_ares'),  active: aresActive,     value: aresActive     ? this.t('active') : this.t('stopped'), module: 'autoSpells', method: '_toggleAres' },
+            ]);
+
+            group(this.t('cat_mix'), [
+                { label: this.t('row_party'),      active: partyActive, value: partyActive ? celStr : this.t('stopped'),     module: 'autoParty',          method: 'toggle' },
+                { label: this.t('row_hide'),          active: hideActive,    value: hideActive    ? this.t('active') : this.t('stopped'),                module: 'autoHide',          method: 'toggle' },
+                { label: this.t('row_quest'),         active: questActive,   value: questActive   ? this.t('active') : this.t('stopped'),                module: 'autoQuest',         method: 'toggle' },
+            ]);
+
+            group(this.t('cat_mult'), [
+                { label: this.t('row_colonize_ship'), active: cssActive,   value: cssActive   ? `→ ${this.getTownName(bot.colonizeShipSender.config.targetTownId)}` : this.t('stopped'), module: 'colonizeShipSender', method: cssActive ? 'stop' : 'start' },
+                { label: this.t('row_discord'),       active: discordActive, value: discordActive ? this.t('active') : this.t('stopped'),                module: 'discordAlert',      method: 'toggle' },
+                { label: this.t('row_mult_tools'), active: false, value: this.t('mt_prefix_value', { prefix: bot.multTools?._renamePrefix ?? 'OC' }), module: null, method: null },
+                { label: this.t('row_trade_manual'), active: false, value: this.t('manual_via_console'), module: null, method: null },
+            ]);
+
+            let html = '';
+            let activeTotal = 0;
+            let total = 0;
+            for (const category of rows) {
+                const activeCount = category.entries.filter(entry => entry.active).length;
+                activeTotal += activeCount;
+                total += category.entries.length;
+                html += this._categoryHeader(category.label, activeCount, category.entries.length);
+                html += category.entries
+                    .map(entry => this._row(entry.label, entry.active, entry.value, entry.module, entry.method))
+                    .join('');
+            }
+
+            uw.$('#status_rows').html(html);
+            const $summary = uw.$('#status_summary');
+            if ($summary.length) $summary.text(this.t('status_summary', { active: activeTotal, total }));
             this._renderSleeperStatus();
         } catch(e) {
             uw.$('#status_rows').text(`${this.t('error')}: ${e?.message ?? e}`).css({ padding: '5px', color: 'red' });
         }
+    }
+
+    /* Cabeçalho de categoria com a contagem de módulos ligados. */
+    _categoryHeader(label, activeCount, totalCount) {
+        const safeLabel = this.escapeHtml(label);
+        return `
+        <div style="display:flex;justify-content:space-between;align-items:center;
+            padding:4px 8px 2px;margin-top:2px;font-size:11px;font-weight:bold;color:#5a3a0a;
+            background:rgba(0,0,0,0.05);border-top:1px solid rgba(0,0,0,0.12);
+            border-bottom:1px solid rgba(0,0,0,0.08);text-transform:uppercase;letter-spacing:0.5px;">
+            <span>${safeLabel}</span>
+            <span style="font-weight:normal;color:#8a7a5a;">${activeCount}/${totalCount}</span>
+        </div>`;
     }
 
     _row(label, active, value, module, method) {
