@@ -40,6 +40,15 @@ var Sniper = class extends MultUtil {
     constructor(c, s) {
         super(c, s);
         this._scheduled = this.storage.load('sniper_scheduled', []);
+        // Uma recarga durante o POST não autoriza repetir o mesmo envio.
+        let interrupted = false;
+        for (const snipe of this._scheduled) {
+            if (snipe.status !== 'firing') continue;
+            snipe.status = 'uncertain';
+            snipe.error = this.t('sniper_result_uncertain');
+            interrupted = true;
+        }
+        if (interrupted) this.storage.save('sniper_scheduled', this._scheduled);
         this._observer = null;
         this._checkerInterval = null;
         this._armedTimeouts = {};
@@ -581,6 +590,15 @@ var Sniper = class extends MultUtil {
         if (uw.__multbot_captcha_active) return;
 
         snipe.status = 'firing';
+        // Persistir ANTES do primeiro envio fecha a janela de duplicação
+        // em reload. Se não puder salvar, não envia.
+        if (!this.storage.save('sniper_scheduled', this._scheduled)) {
+            snipe.status = 'failed';
+            snipe.error = this.t('sniper_storage_error');
+            this.console.log('[Sniper] ' + snipe.error);
+            this._renderList();
+            return;
+        }
 
         if (this._armedTimeouts[id]) {
             clearTimeout(this._armedTimeouts[id]);
@@ -599,6 +617,7 @@ var Sniper = class extends MultUtil {
        endpoint errado, nunca confirmado por captura). */
     async _cancelCommand(townId, commandId) {
         try {
+            if (uw.__multbot_captcha_active || !/^\d+$/.test(String(commandId))) return false;
             const data = {
                 id: parseInt(commandId, 10),
                 town_id: parseInt(townId, 10),
@@ -698,16 +717,26 @@ var Sniper = class extends MultUtil {
         return { min: -1, max: 0 };
     }
 
-    async _waitForTroopsAvailable(snipe, maxWaitMs) {
+    _isCommandActive(commandId) {
+        const models = uw.MM?.getModels()?.MovementsUnits;
+        if (!models) return true; // Sem visão do jogo, não libera reenvio.
+        return Object.values(models).some(model => {
+            const attributes = model?.attributes;
+            return attributes && String(attributes.command_id ?? attributes.id) === String(commandId);
+        });
+    }
+
+    async _waitForTroopsAvailable(snipe, maxWaitMs, cancelledCommandId) {
         const start = Date.now();
         while (Date.now() - start < maxWaitMs) {
+            if (uw.__multbot_captcha_active) return false;
             try {
                 const town = uw.ITowns.towns[snipe.originTownId];
                 const available = town ? town.units() : {};
                 const ready = Object.entries(snipe.composition).every(
                     ([unit, qty]) => (available[unit] || 0) >= qty
                 );
-                if (ready) return true;
+                if (ready && !this._isCommandActive(cancelledCommandId)) return true;
             } catch (e) {}
             await this.sleep(500);
         }
@@ -719,6 +748,11 @@ var Sniper = class extends MultUtil {
         const { min: toleranceMin, max: toleranceMax } = this._getToleranceRange(snipe.type);
 
         for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            if (uw.__multbot_captcha_active) {
+                snipe.status = 'failed';
+                snipe.error = this.t('sniper_retry_paused');
+                return;
+            }
             try {
                 const result = await this._fireOnce(snipe);
 
@@ -767,19 +801,27 @@ var Sniper = class extends MultUtil {
                     return;
                 }
 
-                await this._cancelCommand(snipe.originTownId, result.command.command_id);
+                const commandId = result.command.command_id ?? result.command.id;
+                snipe.commandId = commandId;
+                const cancelled = await this._cancelCommand(snipe.originTownId, commandId);
+                if (!cancelled) {
+                    snipe.status = 'uncertain';
+                    snipe.error = this.t('sniper_result_uncertain');
+                    this.console.log('[Sniper] ' + snipe.error);
+                    return;
+                }
                 this.console.log('[Sniper] ' + this.t('sniper_waiting_troops_log', { target: snipe.targetName }));
 
-                const troopsReady = await this._waitForTroopsAvailable(snipe, maxWaitForTroopsMs);
+                const troopsReady = await this._waitForTroopsAvailable(snipe, maxWaitForTroopsMs, commandId);
                 if (!troopsReady) {
                     snipe.status = 'failed';
-                    snipe.error = this.t('sniper_troops_not_back_error');
+                    snipe.error = this.t(uw.__multbot_captcha_active ? 'sniper_retry_paused' : 'sniper_troops_not_back_error');
                     this.console.log('[Sniper] ' + this.t('sniper_fired_fail', { target: snipe.targetName, reason: snipe.error }));
                     return;
                 }
             } catch (e) {
-                snipe.status = 'failed';
-                snipe.error = e?.message ?? String(e);
+                snipe.status = 'uncertain';
+                snipe.error = this.t('sniper_result_uncertain') + ' ' + (e?.message ?? String(e));
                 this.console.log('[Sniper] ' + this.t('sniper_fired_fail', { target: snipe.targetName, reason: snipe.error }));
                 return;
             }
@@ -797,11 +839,20 @@ var Sniper = class extends MultUtil {
         this.console.log('[Sniper] ' + this.t('sniper_cancelled_log'));
     };
 
-    /* Remove todos os agendamentos com status 'sent' ou 'failed' —
-       mantém apenas os pendentes e em disparo. */
+    dismissUncertain = (id) => {
+        const snipe = this._scheduled.find(entry => entry.id === id);
+        if (snipe?.status !== 'uncertain' || !uw.confirm(this.t('sniper_dismiss_uncertain'))) return;
+        // Remove somente o registro local, nunca cancela um comando no jogo.
+        this._scheduled = this._scheduled.filter(entry => entry.id !== id);
+        this.storage.save('sniper_scheduled', this._scheduled);
+        this._renderList();
+    };
+
+    /* Resultados incertos exigem conferência explícita; limpar os
+       concluídos não deve escondê-los. */
     clearDone = () => {
         const before = this._scheduled.length;
-        this._scheduled = this._scheduled.filter(s => s.status === 'pending' || s.status === 'firing');
+        this._scheduled = this._scheduled.filter(s => s.status === 'pending' || s.status === 'firing' || s.status === 'uncertain');
         const removed = before - this._scheduled.length;
         this.storage.save('sniper_scheduled', this._scheduled);
         this._renderList();
@@ -818,6 +869,7 @@ var Sniper = class extends MultUtil {
                 firing:  { bg: '#e0e8f5', fg: '#3a5a9a', label: this.t('sniper_status_firing') },
                 sent:    { bg: '#dff3e3', fg: '#1a6b2a', label: this.t('sniper_status_sent') },
                 failed:  { bg: '#fbe0e0', fg: '#c0392b', label: this.t('sniper_status_failed') },
+                uncertain: { bg: '#fff0cf', fg: '#8a5a0a', label: this.t('sniper_status_uncertain') },
             };
 
             const rows = sorted.map(s => {
@@ -827,7 +879,9 @@ var Sniper = class extends MultUtil {
                 const isNext = s.id === nextPendingId;
                 const cancelBtn = s.status === 'pending'
                     ? `<span onclick="window.multBot.sniper.cancelSnipe('${s.id}')" title="${this.t('sniper_cancel_tooltip')}" style="cursor:pointer;color:#c0392b;font-weight:bold;margin-left:10px;font-size:13px;">✕</span>`
-                    : '';
+                    : s.status === 'uncertain'
+                        ? `<span onclick="window.multBot.sniper.dismissUncertain('${s.id}')" title="${this.t('sniper_dismiss_tooltip')}" style="cursor:pointer;margin-left:10px;">✕</span>`
+                        : '';
                 const typeIcon = s.type === 'attack' ? '⚔️' : '🛡️';
 
                 return `
@@ -839,6 +893,7 @@ var Sniper = class extends MultUtil {
                         <div style="font-weight:bold;color:#3a2a0a;">${typeIcon} ${targetName}</div>
                         <div style="color:#6a5a3a;margin-top:1px;">${compSummary}</div>
                         <div style="color:#8a7a5a;font-size:10.5px;margin-top:2px;">${this.t('sniper_row_arrival', { time: new Date(s.arrivalAt).toLocaleString() })}</div>
+                        ${s.error ? `<div style="color:#8a5a0a;">${this.escapeHtml(s.error)}</div>` : ''}
                     </div>
                     <div style="text-align:right;white-space:nowrap;">
                         <span style="background:${st.bg};color:${st.fg};padding:2px 8px;border-radius:10px;font-weight:bold;font-size:10.5px;">${st.label}</span>

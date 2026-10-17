@@ -55,6 +55,8 @@ var AutoAttack = class extends MultUtil {
 
     constructor(c, s) {
         super(c, s);
+        this._generation = 0;
+        this._restoreTimeout = null;
         this._active = false;
         this._intervalId = null;
         this._plans = this.storage.load('attack_plans', []);
@@ -64,9 +66,7 @@ var AutoAttack = class extends MultUtil {
         this._migrateOldPlans();
 
         if (this.storage.load('attack_active', false)) {
-            setTimeout(() => {
-                this.start();
-            }, 2000);
+            this._restoreTimeout = setTimeout(() => this.start(), 2000);
         }
     }
 
@@ -449,8 +449,11 @@ var AutoAttack = class extends MultUtil {
     };
 
     start() {
+        clearTimeout(this._restoreTimeout);
+        this._restoreTimeout = null;
         if (this._active) return;
         this._active = true;
+        this._generation++;
         this.storage.save('attack_active', true);
         this._updateTitle();
         this.console.log('[AutoAttack] Iniciado. Monitorando planos de ataque...');
@@ -459,6 +462,9 @@ var AutoAttack = class extends MultUtil {
     }
 
     stop() {
+        clearTimeout(this._restoreTimeout);
+        this._restoreTimeout = null;
+        this._generation++;
         this._active = false;
         this.storage.save('attack_active', false);
         if (this._intervalId) {
@@ -720,16 +726,27 @@ var AutoAttack = class extends MultUtil {
        aguardável para createGuardedInterval, isso evita que dois planos
        da mesma cidade leiam a mesma quantidade de tropas e disparem ao
        mesmo tempo antes de o modelo local ser atualizado. */
-    async _tick() {
-        if (uw.__multbot_captcha_active || this.isSleeping()) return;
-        if (this._plans.length === 0) return;
+    _canRun(generation) {
+        return this._active && generation === this._generation
+            && !uw.__multbot_captcha_active && !this.isSleeping();
+    }
 
-        for (const plan of this._plans) {
-            if (uw.__multbot_captcha_active || this.isSleeping()) return;
-            if (!plan.enabled) continue;
-            await this._checkAndFire(plan);
-            await this.sleep(this.SEND_DELAY_MS);
-        }
+    async _tick() {
+        const generation = this._generation;
+        if (!this._canRun(generation)) return;
+        return this.runExclusive('tick', async () => {
+            try {
+                for (const plan of this._plans) {
+                    if (!this._canRun(generation)) return;
+                    if (!plan.enabled) continue;
+                    await this._checkAndFire(plan);
+                    if (!this._canRun(generation)) return;
+                    await this.sleep(this.SEND_DELAY_MS);
+                }
+            } catch (error) {
+                this.console.log('[' + this.constructor.name + '] Ciclo interrompido: ' + (error?.message ?? error));
+            }
+        });
     }
 
     _computeNextAllowedAt(restMinutes) {

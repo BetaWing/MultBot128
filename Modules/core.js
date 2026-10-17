@@ -376,6 +376,12 @@ __MultBotI18N.dict = {
 		sniper_status_firing: '🚀 Firing...',
 		sniper_status_sent: '✓ Sent',
 		sniper_status_failed: '✗ Failed',
+		sniper_status_uncertain: '⚠ Check command',
+		sniper_retry_paused: 'Retry stopped: an anti-bot challenge is active.',
+		sniper_dismiss_tooltip: 'Dismiss after checking the game',
+		sniper_dismiss_uncertain: 'Have you checked the commands in the game? This only removes the local record; it does not cancel any troops.',
+		sniper_result_uncertain: 'Unconfirmed result. No automatic retry; check commands in the game.',
+		sniper_storage_error: 'Could not save the schedule state. No troops were sent.',
 		sniper_type_attack: 'Attack',
 		sniper_type_support: 'Support',
 		sniper_row_arrival: 'Arrival: {time}',
@@ -841,6 +847,12 @@ __MultBotI18N.dict = {
 		sniper_status_firing: '🚀 Disparando...',
 		sniper_status_sent: '✓ Enviado',
 		sniper_status_failed: '✗ Falhou',
+		sniper_status_uncertain: '⚠ Conferir comando',
+		sniper_retry_paused: 'Nova tentativa interrompida: há um desafio anti-bot ativo.',
+		sniper_dismiss_tooltip: 'Remover após conferir no jogo',
+		sniper_dismiss_uncertain: 'Você conferiu os comandos no jogo? Isto só remove o registro local; não cancela nenhuma tropa.',
+		sniper_result_uncertain: 'Resultado sem confirmação. Sem nova tentativa automática; confira os comandos no jogo.',
+		sniper_storage_error: 'Não foi possível salvar o estado do agendamento. Nenhuma tropa foi enviada.',
 		sniper_type_attack: 'Ataque',
 		sniper_type_support: 'Apoio',
 		sniper_row_arrival: 'Chegada: {time}',
@@ -1172,70 +1184,51 @@ var MultUtil = class {
         return '#' + ids;
     };
 
-    /* extraFlag: some game endpoints (e.g. town_info/trade) expect
-       `true` in this 4th parameter of the native ajaxPost. Default
-       false preserves the behavior of all existing callers. */
-    ajaxPostWithTimeout = (endpoint, action, data, timeoutMs = 15000, extraFlag = false) => {
+    /* Um timeout encerra a espera local, não comprova que o servidor
+       deixou de executar um POST. O chamador decide como reconciliar. */
+    ajaxWithTimeout = (method, endpoint, action, data, timeoutMs, extraFlag) => {
         return new Promise((resolve, reject) => {
             let settled = false;
-
-            const timer = setTimeout(() => {
+            const finish = (callback, value) => {
                 if (settled) return;
                 settled = true;
-                reject(new Error('Network timeout (' + timeoutMs + 'ms) on ' + endpoint + '/' + action));
+                clearTimeout(timer);
+                callback(value);
+            };
+            const timer = setTimeout(() => {
+                const error = new Error('Network timeout (' + timeoutMs + 'ms) on ' + endpoint + '/' + action);
+                error.code = 'NETWORK_TIMEOUT';
+                finish(reject, error);
             }, timeoutMs);
 
-            uw.gpAjax.ajaxPost(endpoint, action, data, extraFlag,
-                (res) => {
-                    if (settled) return;
-                    settled = true;
-                    clearTimeout(timer);
-                    resolve(res);
-                },
-                (r, status, txt) => {
-                    if (settled) return;
-                    settled = true;
-                    clearTimeout(timer);
-                    reject(new Error('Network error: ' + txt));
-                }
-            );
+            try {
+                uw.gpAjax[method](endpoint, action, data, extraFlag,
+                    res => finish(resolve, res),
+                    (_request, _status, text) => finish(reject, new Error('Network error: ' + text))
+                );
+            } catch (error) {
+                finish(reject, error);
+            }
         });
     };
 
-    /* Equivalent to ajaxPostWithTimeout, but for ajaxGet calls.
-       Without this, an ajaxGet call that never calls either the
-       success or the error callback (endpoint changed, unexpected
-       response, etc) leaves the Promise hanging FOREVER - the await
-       never returns, no exception is thrown, and whoever is waiting
-       (e.g. auto_farm.js) hangs silently with no error log.
-       extraFlag: same meaning as in ajaxPostWithTimeout - some
-       endpoints expect `true` in this 4th parameter. Default false
-       preserves the behavior of all existing callers. */
-    ajaxGetWithTimeout = (endpoint, action, data, timeoutMs = 15000, extraFlag = false) => {
-        return new Promise((resolve, reject) => {
-            let settled = false;
+    ajaxPostWithTimeout = (endpoint, action, data, timeoutMs = 15000, extraFlag = false) =>
+        this.ajaxWithTimeout('ajaxPost', endpoint, action, data, timeoutMs, extraFlag);
 
-            const timer = setTimeout(() => {
-                if (settled) return;
-                settled = true;
-                reject(new Error('Network timeout (' + timeoutMs + 'ms) on ' + endpoint + '/' + action));
-            }, timeoutMs);
+    ajaxGetWithTimeout = (endpoint, action, data, timeoutMs = 15000, extraFlag = false) =>
+        this.ajaxWithTimeout('ajaxGet', endpoint, action, data, timeoutMs, extraFlag);
 
-            uw.gpAjax.ajaxGet(endpoint, action, data, extraFlag,
-                (res) => {
-                    if (settled) return;
-                    settled = true;
-                    clearTimeout(timer);
-                    resolve(res);
-                },
-                (r, status, txt) => {
-                    if (settled) return;
-                    settled = true;
-                    clearTimeout(timer);
-                    reject(new Error('Network error: ' + txt));
-                }
-            );
-        });
+    /* Trava da instância, não do timer: cobre também chamadas imediatas,
+       eventos e intervalos recriados enquanto um ciclo ainda aguarda rede. */
+    runExclusive = async (key, fn) => {
+        this._runningTasks ??= new Set();
+        if (this._runningTasks.has(key)) return;
+        this._runningTasks.add(key);
+        try {
+            return await fn();
+        } finally {
+            this._runningTasks.delete(key);
+        }
     };
 
     /* Verifica se o Sleeper (configurado na aba Status) esta ativo
