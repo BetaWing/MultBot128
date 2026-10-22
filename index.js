@@ -7,8 +7,8 @@
 // @match        https://*.grepolis.com/game/*
 // @grant        none
 // @run-at       document-end
-// @updateURL    https://raw.githubusercontent.com/NotXina/MultBot/main/index.js
-// @downloadURL  https://raw.githubusercontent.com/NotXina/MultBot/main/index.js
+// @updateURL    https://raw.githubusercontent.com/BetaWing/MultBot128/main/index.js
+// @downloadURL  https://raw.githubusercontent.com/BetaWing/MultBot128/main/index.js
 // ==/UserScript==
 
 (function () {
@@ -36,7 +36,7 @@
     }
     uw.__multbot_index_running__ = true;
 
-    const BASE_URL = 'https://raw.githubusercontent.com/NotXina/MultBot/main/Modules';
+    const BASE_URL = 'https://raw.githubusercontent.com/BetaWing/MultBot128/main/Modules';
     const MAX_RETRIES = 2;
     const TOTAL_ATTEMPTS = MAX_RETRIES + 1;
     const FETCH_TIMEOUT_MS = 15000;
