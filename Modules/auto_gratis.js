@@ -98,7 +98,7 @@ var AutoGratis = class extends MultUtil {
         const completedAt = order.attributes.to_be_completed_at;
         if (!completedAt) return false;
         const remaining = completedAt - now;
-        if (remaining > 0 && remaining < 300) {
+        if (remaining > 0 && remaining < 280) {
             if (this._fired.has(order.id)) return false;
             this._fired.add(order.id);
             this.callGratis(town.id, order.id);
