@@ -12,15 +12,21 @@
 var AutoResearch = class extends MultUtil {
     DEFAULT_ORDER = [
         'town_guard',
-        'meteorology',
-        'espionage',
-        'booty',
+        'booty',     
         'pottery',
         'architecture',
-        'building_crane',
         'shipwright',
+        'building_crane',
+        'bireme',
         'colonize_ship',
+        'phalanx',
+        'ram',
+        'mathematics',
+        'cartography',
+        'set_sail',
+        'strong_wine',
         'plow',
+        'combat_experience',
     ];
 
     constructor(c, s) {
