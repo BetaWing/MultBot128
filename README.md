@@ -8,7 +8,7 @@ Fork aprimorado do [ModernBot](https://github.com/Sau1707/ModernBot) para Grepol
 2. Crie um userscript com o conteúdo de `index.js` ou instale pela URL:
 
    ```text
-   https://raw.githubusercontent.com/NotXina/MultBot/main/index.js
+   https://raw.githubusercontent.com/BetaWing/MultBot128/main/index.js
    ```
 
 O `index.js` aguarda o jogo ficar pronto, baixa os módulos e monta o bundle no navegador. Cada download tem timeout e novas tentativas; uma falha em módulo opcional não impede os demais de iniciar.
