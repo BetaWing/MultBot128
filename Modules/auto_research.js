@@ -19,12 +19,9 @@ var AutoResearch = class extends MultUtil {
         'building_crane',
         'bireme',
         'colonize_ship',
-        'phalanx',
         'ram',
         'mathematics',
-        'cartography',
         'set_sail',
-        'strong_wine',
         'plow',
         'combat_experience',
     ];
