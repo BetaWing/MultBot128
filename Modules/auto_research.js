@@ -21,6 +21,7 @@ var AutoResearch = class extends MultUtil {
         'colonize_ship',
         'ram',
         'mathematics',
+        'cartography',
         'set_sail',
         'plow',
         'combat_experience',
